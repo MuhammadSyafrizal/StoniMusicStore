@@ -43,6 +43,7 @@ function App() {
         image: room.image || "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=800",
         bookedSlots: (bookingsData || [])
           .filter(b => Number(b.room_id) === Number(room.id))
+          .filter(b => b.status === "pending" || b.status === "booked")
           .map(b => ({
             date: b.tanggal,
             time: b.jam,

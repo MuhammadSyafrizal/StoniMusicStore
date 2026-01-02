@@ -11,24 +11,20 @@ function App() {
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // Kita ubah rooms jadi dinamis sepenuhnya dari Supabase (lebih aman & scalable)
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Fungsi fetch rooms + bookings digabung supaya konsisten
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
 
-      // 1. Ambil data rooms (misal dari tabel 'rooms')
       const { data: roomsData, error: roomsError } = await supabase
         .from('rooms')
-        .select('id, name, price, image')
+        .select('id, name, price, image, description') // Tambah field description jika ada di DB
         .order('id');
 
       if (roomsError) throw roomsError;
 
-      // 2. Ambil semua booking yang status booked atau pending
       const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
         .select('room_id, tanggal, jam, status')
@@ -36,11 +32,11 @@ function App() {
 
       if (bookingsError) throw bookingsError;
 
-      // 3. Gabungkan data: tambahkan bookedSlots ke setiap room
       const updatedRooms = (roomsData || []).map(room => ({
         ...room,
-        price: room.price?.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".") || "0", // format harga
+        price: room.price?.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".") || "0",
         image: room.image || "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=800",
+        description: room.description || getFallbackDescription(room.id), // Gunakan deskripsi dari DB atau fallback
         bookedSlots: (bookingsData || [])
           .filter(b => Number(b.room_id) === Number(room.id))
           .filter(b => b.status === "pending" || b.status === "booked")
@@ -54,13 +50,38 @@ function App() {
       setRooms(updatedRooms);
     } catch (err) {
       console.error("Error fetching data:", err);
-      // Fallback ke data statis kalau gagal
+      // Fallback statis dengan deskripsi
       setRooms([
         {
           id: 1,
           name: "Studio Latihan A",
           price: "150.000",
           image: "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=800",
+          description: "Cocok untuk latihan band pemula. Dilengkapi drum, amplifier gitar/bass, dan keyboard standar.",
+          bookedSlots: []
+        },
+        {
+          id: 2,
+          name: "Studio Latihan B",
+          price: "175.000",
+          image: "/src/assets/StudioB.webp",
+          description: "Ruang lebih luas dengan perlengkapan premium: Ampli Marshall, drum Pearl, dan sistem monitoring yang jernih.",
+          bookedSlots: []
+        },
+        {
+          id: 3,
+          name: "Studio Rekaman Pro",
+          price: "250.000",
+          image: "/src/assets/StudioC.webp",
+          description: "Studio rekaman profesional dengan control room terpisah, mic condenser high-end, dan akustik ruangan optimal.",
+          bookedSlots: []
+        },
+        {
+          id: 4,
+          name: "Studio Dance & Vocal",
+          price: "200.000",
+          image: "/src/assets/StudioD.webp",
+          description: "Ruang luas dengan lantai kayu, cermin full wall, sound system karaoke, dan booth vocal untuk latihan vokal/dance.",
           bookedSlots: []
         }
       ]);
@@ -69,28 +90,34 @@ function App() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchData(); // Initial load
+// Helper untuk fallback description kalau DB belum punya field description
+const getFallbackDescription = (id) => {
+  const desc = {
+    1: "Cocok untuk latihan band pemula. Dilengkapi drum, amplifier gitar/bass, dan keyboard standar.",
+    2: "Ruang lebih luas dengan perlengkapan premium: Ampli Marshall, drum Pearl, dan sistem monitoring yang jernih.",
+    3: "Studio rekaman profesional dengan control room terpisah, mic condenser high-end, dan akustik ruangan optimal.",
+    4: "Ruang luas dengan lantai kayu, cermin full wall, sound system karaoke, dan booth vocal untuk latihan vokal/dance."
+  };
+  return desc[id] || "Studio serbaguna dengan fasilitas lengkap.";
+};
 
-    // Realtime subscription
+  useEffect(() => {
+    fetchData();
+
     const channel = supabase
       .channel('realtime-bookings')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bookings' },
-        (payload) => {
-          console.log('Change detected:', payload);
-          fetchData(); // Refresh semua data saat ada perubahan booking
-        }
+        () => fetchData()
       )
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'rooms' }, // Opsional: kalau room bisa ditambah/edit
+        { event: '*', schema: 'public', table: 'rooms' },
         () => fetchData()
       )
       .subscribe();
 
-    // Cleanup saat component unmount
     return () => {
       supabase.removeChannel(channel);
     };
@@ -109,25 +136,27 @@ function App() {
           <>
             <Hero />
             <section className='py-20 px-6 max-w-7xl mx-auto'>
+              <h2 className='text-4xl font-bold text-center mb-16'>
+                Pilih Studio Anda
+              </h2>
+
               {loading ? (
-                <div className="text-center py-10">
-                  <p>Loading studio tersedia...</p>
+                <div className="text-center py-20">
+                  <p className="text-xl">Memuat studio tersedia...</p>
                 </div>
+              ) : rooms.length === 0 ? (
+                <p className="text-center text-xl">Belum ada studio tersedia.</p>
               ) : (
-                <div className='grid grid-cols-1 md:grid-cols-3 gap-8'>
-                  {rooms.length === 0 ? (
-                    <p className="col-span-full text-center">Belum ada studio tersedia.</p>
-                  ) : (
-                    rooms.map((room) => (
-                      <div
-                        key={room.id}
-                        onClick={() => openBooking(room)}
-                        className="cursor-pointer transform hover:scale-105 transition-transform duration-200"
-                      >
-                        <RoomCard {...room} />
-                      </div>
-                    ))
-                  )}
+                <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10'>
+                  {rooms.map((room) => (
+                    <div
+                      key={room.id}
+                      onClick={() => openBooking(room)}
+                      className="cursor-pointer transform hover:scale-105 transition-all duration-300 hover:z-10"
+                    >
+                      <RoomCard {...room} />
+                    </div>
+                  ))}
                 </div>
               )}
             </section>

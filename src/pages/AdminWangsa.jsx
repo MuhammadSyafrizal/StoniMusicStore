@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { useNavigate } from 'react-router-dom'; // Tambahkan ini untuk proteksi route
 
 export default function AdminWangsa() {
+  const navigate = useNavigate(); // Inisialisasi navigasi
   const [bookings, setBookings] = useState([]);
   const [cancelledBookings, setCancelledBookings] = useState([]);
   const [settings, setSettings] = useState({
@@ -13,9 +15,22 @@ export default function AdminWangsa() {
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Fungsi untuk Logout
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate('/admin-login'); // Lempar ke halaman login admin
+  };
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
+
+      // Proteksi Tambahan: Cek sesi sebelum ambil data
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate('/admin-login'); 
+        return;
+      }
 
       // Ambil booking aktif + durasi_sewa
       const { data: activeData, error: activeError } = await supabase
@@ -56,7 +71,7 @@ export default function AdminWangsa() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     fetchData();
@@ -179,7 +194,7 @@ export default function AdminWangsa() {
   if (loading) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <p className="text-xl">Sedang memuat data...</p>
+        <p className="text-xl">Checking Authorization...</p>
       </div>
     );
   }
@@ -187,8 +202,18 @@ export default function AdminWangsa() {
   return (
     <div className="min-h-screen bg-black text-white p-6 pt-24 md:p-10">
       <div className="max-w-5xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Panel Admin Wangsa Studio</h1>
-        <p className="text-zinc-400 mb-10">Kelola booking, pengaturan jam, dan riwayat pembatalan</p>
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10 border-b border-zinc-800 pb-8">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Panel Admin Wangsa Studio</h1>
+            <p className="text-zinc-400">Kelola booking, pengaturan jam, dan riwayat pembatalan</p>
+          </div>
+          <button 
+            onClick={handleLogout}
+            className="bg-zinc-800 hover:bg-red-600 text-white px-6 py-2 rounded-xl text-sm font-bold transition-all"
+          >
+            Logout Securely
+          </button>
+        </div>
 
         {/* STATISTIK HARI INI */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
@@ -267,7 +292,6 @@ export default function AdminWangsa() {
           <div className="grid gap-6 mb-12">
             {filteredBookings.map((b) => {
               const durasi = b.durasi_sewa || settings.durasi_sewa || 2;
-              const jamSelesai = getJamSelesai(b.jam, durasi);
 
               return (
                 <div

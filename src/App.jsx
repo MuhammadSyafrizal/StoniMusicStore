@@ -1,16 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useNavigate } from "react-router-dom"; // Tambahkan useNavigate
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
-import RoomCard from "./components/RoomCard";
 import AdminWangsa from './pages/AdminWangsa';
-import BookingModal from "./components/BookingModal";
+import AdminLogin from './pages/AdminLogin';
 import { supabase } from "./lib/supabase";
+import EquipmentPage from './components/EquipmentPage';
+import BookingPage from './pages/BookingPage';
+import StudioGallery from './components/StudioGallery';
 
 function App() {
-  const [selectedRoom, setSelectedRoom] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  
+  const navigate = useNavigate(); // Untuk navigasi ke booking page
+
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -20,7 +21,7 @@ function App() {
 
       const { data: roomsData, error: roomsError } = await supabase
         .from('rooms')
-        .select('id, name, price, image, description') // Tambah field description jika ada di DB
+        .select('id, name, price, image, description')
         .order('id');
 
       if (roomsError) throw roomsError;
@@ -36,10 +37,9 @@ function App() {
         ...room,
         price: room.price?.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".") || "0",
         image: room.image || "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=800",
-        description: room.description || getFallbackDescription(room.id), // Gunakan deskripsi dari DB atau fallback
+        description: room.description || "Studio serbaguna dengan fasilitas lengkap.",
         bookedSlots: (bookingsData || [])
           .filter(b => Number(b.room_id) === Number(room.id))
-          .filter(b => b.status === "pending" || b.status === "booked")
           .map(b => ({
             date: b.tanggal,
             time: b.jam,
@@ -50,57 +50,31 @@ function App() {
       setRooms(updatedRooms);
     } catch (err) {
       console.error("Error fetching data:", err);
-      // Fallback statis dengan deskripsi
+
+      // Fallback data jika Supabase gagal (opsional, bisa diperluas)
       setRooms([
         {
           id: 1,
           name: "Studio Latihan A",
           price: "150.000",
           image: "https://images.unsplash.com/photo-1514320291840-2e0a9bf2a9ae?w=800",
-          description: "Cocok untuk latihan band pemula. Dilengkapi drum, amplifier gitar/bass, dan keyboard standar.",
-          bookedSlots: []
+          description: "Cocok untuk latihan band pemula.",
         },
         {
           id: 2,
           name: "Studio Latihan B",
           price: "175.000",
-          image: "/src/assets/StudioB.webp",
-          description: "Ruang lebih luas dengan perlengkapan premium: Ampli Marshall, drum Pearl, dan sistem monitoring yang jernih.",
-          bookedSlots: []
+          image: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800",
+          description: "Ruang premium dengan ampli Marshall.",
         },
-        {
-          id: 3,
-          name: "Studio Rekaman Pro",
-          price: "250.000",
-          image: "/src/assets/StudioC.webp",
-          description: "Studio rekaman profesional dengan control room terpisah, mic condenser high-end, dan akustik ruangan optimal.",
-          bookedSlots: []
-        },
-        {
-          id: 4,
-          name: "Studio Dance & Vocal",
-          price: "200.000",
-          image: "/src/assets/StudioD.webp",
-          description: "Ruang luas dengan lantai kayu, cermin full wall, sound system karaoke, dan booth vocal untuk latihan vokal/dance.",
-          bookedSlots: []
-        }
+        // Tambahkan fallback lainnya sesuai kebutuhan
       ]);
     } finally {
       setLoading(false);
     }
   }, []);
 
-// Helper untuk fallback description kalau DB belum punya field description
-const getFallbackDescription = (id) => {
-  const desc = {
-    1: "Cocok untuk latihan band pemula. Dilengkapi drum, amplifier gitar/bass, dan keyboard standar.",
-    2: "Ruang lebih luas dengan perlengkapan premium: Ampli Marshall, drum Pearl, dan sistem monitoring yang jernih.",
-    3: "Studio rekaman profesional dengan control room terpisah, mic condenser high-end, dan akustik ruangan optimal.",
-    4: "Ruang luas dengan lantai kayu, cermin full wall, sound system karaoke, dan booth vocal untuk latihan vokal/dance."
-  };
-  return desc[id] || "Studio serbaguna dengan fasilitas lengkap.";
-};
-
+  // Fetch data saat mount + realtime subscription
   useEffect(() => {
     fetchData();
 
@@ -123,61 +97,50 @@ const getFallbackDescription = (id) => {
     };
   }, [fetchData]);
 
-  const openBooking = (room) => {
-    setSelectedRoom(room);
-    setIsModalOpen(true);
+  // Fungsi untuk membuka halaman booking dengan data room
+  const handleBookRoom = (room) => {
+    navigate(`/booking/${room.id}`, { state: { room } });
   };
 
   return (
-    <div className='min-h-screen bg-black text-white'>
+    <div className="min-h-screen bg-black text-white">
       <Navbar />
+
       <Routes>
-        <Route path="/" element={
-          <>
-            <Hero />
-            <section className='py-20 px-6 max-w-7xl mx-auto'>
-              <h2 className='text-4xl font-bold text-center mb-16'>
-                Pilih Studio Anda
-              </h2>
+        {/* HALAMAN UTAMA */}
+        <Route
+          path="/"
+          element={
+            <>
+              <Hero />
 
               {loading ? (
-                <div className="text-center py-20">
-                  <p className="text-xl">Memuat studio tersedia...</p>
+                <div className="text-center py-40">
+                  <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-red-600 mx-auto mb-6"></div>
+                  <p className="text-zinc-500 uppercase tracking-widest text-sm font-bold">
+                    Loading Spaces...
+                  </p>
                 </div>
-              ) : rooms.length === 0 ? (
-                <p className="text-center text-xl">Belum ada studio tersedia.</p>
               ) : (
-                <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10'>
-                  {rooms.map((room) => (
-                    <div
-                      key={room.id}
-                      onClick={() => openBooking(room)}
-                      className="cursor-pointer transform hover:scale-105 transition-all duration-300 hover:z-10"
-                    >
-                      <RoomCard {...room} />
-                    </div>
-                  ))}
-                </div>
+                <StudioGallery rooms={rooms} onBookRoom={handleBookRoom} />
               )}
-            </section>
-          </>
-        } />
+            </>
+          }
+        />
+
+        {/* HALAMAN BOOKING */}
+        <Route
+          path="/booking/1"
+          element={<BookingPage rooms={rooms} refreshData={fetchData} />}
+        />
+
+        {/* HALAMAN LAIN */}
+        <Route path="/admin-login" element={<AdminLogin />} />
+        <Route path="/equipment" element={<EquipmentPage />} />
         <Route path="/admin-wangsa-rahasia" element={<AdminWangsa />} />
       </Routes>
-
-      {selectedRoom && (
-        <BookingModal
-          room={selectedRoom}
-          isOpen={isModalOpen}
-          onClose={() => {
-            setIsModalOpen(false);
-            setSelectedRoom(null);
-          }}
-          refreshData={fetchData}
-        />
-      )}
     </div>
   );
 }
 
-export default App;
+export default App; // hapus bagian setRooms, lalu ganti dengan tampilan studiogallery.jsx
